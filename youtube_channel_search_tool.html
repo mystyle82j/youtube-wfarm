@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YouTube Channel Search Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; background:#fafafa; margin: 20px; }
+  input, select, button { margin:5px; padding:5px; }
+  .filters, .search-box { margin-bottom: 15px; }
+  .card { display:inline-block; width:300px; border:1px solid #ccc; border-radius:10px; padding:10px; margin:5px; background:#fff; vertical-align:top; }
+  .card img { width:100%; border-radius:8px; }
+  table { width:100%; border-collapse:collapse; background:#fff; }
+  th, td { border:1px solid #ccc; padding:8px; text-align:left; resize:horizontal; overflow:auto; }
+  th { background:#f2f2f2; }
+  #results { margin-top: 20px; }
+</style>
+</head>
+<body>
+  <h2>📺 YouTube 채널 조회 도구</h2>
+  <div class="search-box">
+    <label>API Key: </label><input type="password" id="apiKey" placeholder="API 키를 입력하세요">
+    <br>
+    <label>검색어: </label><input type="text" id="query" placeholder="예: 여행 브이로그">
+    <button onclick="searchVideos()">검색</button>
+  </div>
+
+  <div class="filters">
+    <h4>필터</h4>
+    <div>
+      <b>영상 길이:</b>
+      <label><input type="checkbox" class="length-filter" value="short"> 숏폼(1분 미만)</label>
+      <label><input type="checkbox" class="length-filter" value="long"> 롱폼(1분 이상)</label>
+    </div>
+    <div>
+      <b>업로드 기간:</b>
+      <label><input type="checkbox" class="time-filter" value="1"> 1개월</label>
+      <label><input type="checkbox" class="time-filter" value="2"> 2개월</label>
+      <label><input type="checkbox" class="time-filter" value="3"> 3개월</label>
+      <label><input type="checkbox" class="time-filter" value="6"> 6개월</label>
+      <label><input type="checkbox" class="time-filter" value="12"> 1년</label>
+    </div>
+    <div>
+      <b>조회수/구독자 비율:</b>
+      <label><input type="checkbox" class="ratio-filter" value="1"> 1단계</label>
+      <label><input type="checkbox" class="ratio-filter" value="3"> 3단계</label>
+      <label><input type="checkbox" class="ratio-filter" value="5"> 5단계</label>
+    </div>
+  </div>
+
+  <div>
+    <button onclick="toggleMode('card')">카드 보기</button>
+    <button onclick="toggleMode('table')">테이블 보기</button>
+    <button onclick="exportToExcel()">엑셀로 저장</button>
+  </div>
+
+  <div id="results"></div>
+
+<script>
+let mode = 'card';
+let allVideos = [];
+
+function toggleMode(selected) {
+  mode = selected;
+  displayResults();
+}
+
+async function searchVideos() {
+  const API_KEY = document.getElementById('apiKey').value.trim();
+  const query = document.getElementById('query').value.trim();
+  if (!API_KEY || !query) return alert('API 키와 검색어를 입력하세요');
+
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&q=${encodeURIComponent(query)}&key=${API_KEY}`;
+  const searchRes = await fetch(searchUrl);
+  const searchData = await searchRes.json();
+
+  const videoIds = searchData.items.map(v => v.id.videoId).join(',');
+  const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoIds}&key=${API_KEY}`;
+  const statsRes = await fetch(statsUrl);
+  const statsData = await statsRes.json();
+
+  allVideos = statsData.items.map(v => ({
+    title: v.snippet.title,
+    description: v.snippet.description,
+    channel: v.snippet.channelTitle,
+    tags: v.snippet.tags ? v.snippet.tags.join(', ') : '',
+    thumbnail: v.snippet.thumbnails.medium.url,
+    url: `https://www.youtube.com/watch?v=${v.id}`,
+    viewCount: v.statistics.viewCount || 0,
+    likeCount: v.statistics.likeCount || 0,
+    duration: v.contentDetails.duration,
+    publishedAt: v.snippet.publishedAt
+  }));
+
+  displayResults();
+}
+
+function displayResults() {
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+
+  if (mode === 'card') {
+    allVideos.forEach(v => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `
+        <img src="${v.thumbnail}" alt="thumbnail">
+        <h4>${v.title}</h4>
+        <p>${v.channel}</p>
+        <p>조회수: ${v.viewCount}</p>
+        <a href="${v.url}" target="_blank">영상 보기</a>
+      `;
+      container.appendChild(div);
+    });
+  } else {
+    let table = '<table><thead><tr><th>제목</th><th>채널</th><th>조회수</th><th>설명</th><th>링크</th></tr></thead><tbody>';
+    allVideos.forEach(v => {
+      table += `<tr><td>${v.title}</td><td>${v.channel}</td><td>${v.viewCount}</td><td>${v.description}</td><td><a href='${v.url}' target='_blank'>보기</a></td></tr>`;
+    });
+    table += '</tbody></table>';
+    container.innerHTML = table;
+  }
+}
+
+function exportToExcel() {
+  if (allVideos.length === 0) return alert('데이터가 없습니다');
+  const ws = XLSX.utils.json_to_sheet(allVideos);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'YouTubeData');
+  XLSX.writeFile(wb, 'youtube_data.xlsx');
+}
+</script>
+</body>
+</html>
